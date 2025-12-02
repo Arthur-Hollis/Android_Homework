@@ -24,8 +24,10 @@ import com.example.Android_bigWork.Activity.MainActivity;
 import com.example.Android_bigWork.Adapters.CommentAdapter;
 import com.example.Android_bigWork.Database.CommentDao;
 import com.example.Android_bigWork.Database.DishDatabase;
+import com.example.Android_bigWork.Database.FavoriteDao;
 import com.example.Android_bigWork.Entity.Comment;
 import com.example.Android_bigWork.Entity.Dish;
+import com.example.Android_bigWork.Entity.Favorite;
 import com.example.Android_bigWork.R;
 import com.example.Android_bigWork.Utils.StringUtil; // 假设你需要这个工具类
 
@@ -59,6 +61,9 @@ public class DishDetailFragment extends DialogFragment {
     private String currentUsername;
     private DishMenuFragment dishMenuFragment; // 用于调用 updateShoppingCarAccount()
 
+    private FavoriteDao favoriteDao; // 新增
+    private ImageButton btnFavorite;
+
     // 静态工厂方法
     public static DishDetailFragment newInstance(Dish dish) {
         DishDetailFragment fragment = new DishDetailFragment();
@@ -82,6 +87,8 @@ public class DishDetailFragment extends DialogFragment {
 
         // 初始化 CommentDao
         commentDao = DishDatabase.getDatabase(requireContext()).getCommentDao();
+        // 初始化 FavoriteDao
+        favoriteDao = DishDatabase.getDatabase(requireContext()).getFavoriteDao(); // 【新增】
 
         // 获取当前登录的用户名 (假设 MainActivity 有 public Person getUser() 方法)
         MainActivity activity = (MainActivity) getActivity();
@@ -130,6 +137,23 @@ public class DishDetailFragment extends DialogFragment {
         etCommentInput = view.findViewById(R.id.et_comment_input);
         btnSubmitComment = view.findViewById(R.id.btn_submit_comment);
         rvComments = view.findViewById(R.id.rv_comments);
+
+        // 【新增】: 绑定收藏按钮
+        btnFavorite = view.findViewById(R.id.btn_favorite);
+
+        // 【新增】: 初始化收藏状态和点击事件
+        new Thread(() -> { // 数据库查询必须在后台线程
+            // 1. 初始化状态
+            final boolean isFavorite = (favoriteDao.getFavoriteStatus(currentUsername, currentDish.getGID()) != null);
+
+            requireActivity().runOnUiThread(() -> {
+                // 2. 更新 UI
+                updateFavoriteUI(isFavorite);
+
+                // 3. 设置点击事件
+                btnFavorite.setOnClickListener(v -> toggleFavoriteStatus(isFavorite));
+            });
+        }).start();
 
         // ************* 【填充菜品信息】 *************
         if (currentDish != null) {
@@ -293,6 +317,41 @@ public class DishDetailFragment extends DialogFragment {
 
             // 可以在这里设置底部弹出效果（可选）
             // getDialog().getWindow().setGravity(Gravity.BOTTOM);
+        }
+    }
+
+    // 【新增方法】: 切换收藏状态
+    private void toggleFavoriteStatus(final boolean initialStatus) {
+        new Thread(() -> {
+            final boolean isNowFavorite;
+            if (initialStatus) {
+                // 取消收藏
+                favoriteDao.deleteFavorite(currentUsername, currentDish.getGID());
+                isNowFavorite = false;
+            } else {
+                // 收藏
+                Favorite newFavorite = new Favorite(currentUsername, currentDish.getGID(), System.currentTimeMillis());
+                favoriteDao.insertFavorite(newFavorite);
+                isNowFavorite = true;
+            }
+
+            // 重新设置点击监听器和更新 UI
+            requireActivity().runOnUiThread(() -> {
+                updateFavoriteUI(isNowFavorite);
+                btnFavorite.setOnClickListener(v -> toggleFavoriteStatus(isNowFavorite)); // 必须更新点击事件的 status
+                Toast.makeText(requireContext(), isNowFavorite ? "收藏成功" : "已取消收藏", Toast.LENGTH_SHORT).show();
+            });
+        }).start();
+    }
+
+    // 【新增方法】: 更新收藏按钮的图标
+    private void updateFavoriteUI(boolean isFavorite) {
+        if (isFavorite) {
+            // 使用系统自带的【黄色实心星星】
+            btnFavorite.setImageResource(android.R.drawable.btn_star_big_on);
+        } else {
+            // 使用系统自带的【灰色空心星星】
+            btnFavorite.setImageResource(android.R.drawable.btn_star_big_off);
         }
     }
 }

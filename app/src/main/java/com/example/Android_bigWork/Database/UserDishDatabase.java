@@ -6,12 +6,13 @@ import androidx.room.Database;
 import androidx.room.Room;
 import androidx.room.RoomDatabase;
 
+import com.example.Android_bigWork.Entity.Dish;
 import com.example.Android_bigWork.Entity.UserDish;
 
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-@Database(entities = {UserDish.class}, version = 3, exportSchema = false)
+@Database(entities = {UserDish.class, Dish.class}, version = 4, exportSchema = false)
 public abstract class UserDishDatabase extends RoomDatabase {
 
     public abstract UserDishDao userDishDao();
@@ -20,7 +21,7 @@ public abstract class UserDishDatabase extends RoomDatabase {
     private static final int NUMBER_OF_THREADS = 4;
     static final ExecutorService databaseExecutor = Executors.newFixedThreadPool(NUMBER_OF_THREADS);
 
-    static UserDishDatabase getDatabase(final Context context) {
+    public static UserDishDatabase getDatabase(final Context context) {
         if (INSTANCE == null) {
             synchronized (UserDishDatabase.class) {
                 if (INSTANCE == null) {
@@ -34,4 +35,5 @@ public abstract class UserDishDatabase extends RoomDatabase {
         }
         return INSTANCE;
     }
+    public abstract DishDao getDishDao(); // 【新增】：如果需要从 UserDishDatabase 访问 DishDao
 }

@@ -8,12 +8,20 @@ import androidx.room.RoomDatabase;
 
 import com.example.Android_bigWork.Entity.Comment;
 import com.example.Android_bigWork.Entity.Dish;
+import com.example.Android_bigWork.Entity.Favorite; // 【新增】导入 Favorite 实体
+import com.example.Android_bigWork.Entity.UserDish;
 
-@Database(entities = {Dish.class, Comment.class}, version = 3, exportSchema = false)
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors; // 确保导入
+
+@Database(entities = {Dish.class, Comment.class, Favorite.class, UserDish.class}, version = 6, exportSchema = false)
 public abstract class DishDatabase extends RoomDatabase {
     private static final String DB_NAME = "dish.db";
     private static DishDatabase INSTANCE;
-
+    // 【新增】: 线程池执行器 (与 UserDishDatabase 中的定义一致)
+    private static final int NUMBER_OF_THREADS = 4;
+    public static final ExecutorService databaseExecutor =
+            Executors.newFixedThreadPool(NUMBER_OF_THREADS);
     /**
      * 获取数据库实例
      *
@@ -37,6 +45,9 @@ public abstract class DishDatabase extends RoomDatabase {
 
     public abstract DishDao getDishDao();
     public abstract CommentDao getCommentDao();
+    public abstract FavoriteDao getFavoriteDao(); // 【新增】
+
+    public abstract UserDishDao userDishDao(); // 【新增/确认】: 必须有这个方法，供 Repository 调用
 
 }
 

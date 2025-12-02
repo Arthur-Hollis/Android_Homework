@@ -46,11 +46,15 @@ import com.example.Android_bigWork.Database.CouponDao;
 import com.example.Android_bigWork.Database.CouponDatabase;
 import com.example.Android_bigWork.Database.DishDao;
 import com.example.Android_bigWork.Database.DishDatabase;
+import com.example.Android_bigWork.Database.FavoriteDao;
 import com.example.Android_bigWork.Database.PersonDao;
 import com.example.Android_bigWork.Database.PersonDatabase;
+import com.example.Android_bigWork.Database.UserDishDao;
+import com.example.Android_bigWork.Database.UserDishDatabase;
 import com.example.Android_bigWork.Entity.Coupon;
 import com.example.Android_bigWork.Entity.Dish;
 import com.example.Android_bigWork.Entity.Person;
+import com.example.Android_bigWork.Entity.PopularDish;
 import com.example.Android_bigWork.Entity.UserDish;
 import com.example.Android_bigWork.R;
 import com.example.Android_bigWork.Utils.BaseDialog;
@@ -79,6 +83,10 @@ public class DishMenuFragment extends Fragment {
     // 布局控件
     private StickyListHeadersListView stickyListView;
     private ListView listView;
+    // 【新增】
+    private UserDishDao userDishDao;
+    // 【新增】
+    private UserDishDatabase userDishDatabase; // 假设 UserDishDao 属于 UserDishDatabase
     LinearLayout shoppingCar;
     Button payment;
     private String userName;
@@ -102,7 +110,11 @@ public class DishMenuFragment extends Fragment {
     private CouponDatabase couponDatabase;
     private CouponDao couponDao;
     private Person user;//MainActivity中的用户信息
-
+    private Button btnShowFavorites;
+    private FavoriteDao favoriteDao; // 【新增】
+    private boolean isShowingFavorites = false; // 【新增】: 记录当前是否在显示收藏夹
+    private static final int CID_RECOMMEND = -1; // 【新增】推荐分类ID
+    private static final int CID_POPULAR = -2;   // 【新增】热度排行分类ID
     public static DishMenuFragment newInstance() {
         return new DishMenuFragment();
     }
@@ -117,6 +129,11 @@ public class DishMenuFragment extends Fragment {
         personDao = personDatabase.getPersonDao();
         couponDatabase = CouponDatabase.getDatabase(context);
         couponDao = couponDatabase.getCouponDao();
+        favoriteDao = DishDatabase.getDatabase(context).getFavoriteDao(); // 【新增】
+        // 【新增】: 初始化 UserDishDao
+        //userDishDatabase = UserDishDatabase.getDatabase(context); // 假设你的数据库类名为 UserDishDatabase
+        //userDishDao = userDishDatabase.userDishDao();
+        userDishDao = dishDatabase.userDishDao();
         //获取MainActivity的Bundle数据
         Intent intent = ((Activity) context).getIntent();
         Bundle bundle = intent.getExtras();
@@ -200,10 +217,10 @@ public class DishMenuFragment extends Fragment {
         });
 
         // 菜品栏初始化
-        FoodStickyAdapter foodStickyAdapter = new FoodStickyAdapter(getContext(), this, dishList, userDishList, user.username);
+        final FoodStickyAdapter foodStickyAdapter = new FoodStickyAdapter(getContext(), this, dishList, userDishList, user.username);
         stickyListView.setAdapter(foodStickyAdapter);
         // 分类栏初始化
-        FoodCategoryAdapter foodCategoryAdapter = new FoodCategoryAdapter(getContext(), categoryItems);
+        final FoodCategoryAdapter foodCategoryAdapter = new FoodCategoryAdapter(getContext(), categoryItems);
         listView.setAdapter(foodCategoryAdapter);
 
 // 菜品栏滑动监听
@@ -215,6 +232,10 @@ public class DishMenuFragment extends Fragment {
 
             @Override
             public void onScroll(AbsListView view, int firstVisibleItem, int visibleItemCount, int totalItemCount) {
+                // 【新增修正代码】: 检查列表是否为空
+                if (totalItemCount == 0 || stickyListView.getAdapter() == null || stickyListView.getAdapter().getCount() == 0) {
+                    return; // 列表为空或 Adapter 未设置，直接返回，避免崩溃
+                }
                 // 提醒左栏变化
                 int firstVisibleCID = ((Dish) stickyListView.getAdapter().getItem(firstVisibleItem)).getCID();
                 foodCategoryAdapter.updateCategorySelectionByCID(firstVisibleCID);
@@ -356,8 +377,104 @@ public class DishMenuFragment extends Fragment {
             }
         });
 
+
+// 类别栏按钮点击监听
+        listView.setOnItemClickListener(new AdapterView.OnItemClickListener() {
+            @Override
+            public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
+                // 获得点击类别的CID
+                int selectedCID = ((FoodCategoryAdapter.CategoryItem) foodCategoryAdapter.getItem(position)).getCID();
+
+                // 1. 处理特殊模式 (推荐/热度)
+                if (selectedCID == CID_RECOMMEND || selectedCID == CID_POPULAR) {
+                    // 如果 Adapter 已经是特殊 Adapter，则不重复设置（可选优化）
+                    // 保持你原有的逻辑：执行数据库查询并显示特殊列表
+
+                    if (selectedCID == CID_RECOMMEND) {
+                        // 显示推荐列表 (保持原有逻辑)
+                        showSpecialList(dishDao.getRecommendedDishes(), false);
+                    } else { // CID_POPULAR
+                        new Thread(() -> {
+                            // 1. 【核心】: 从 DAO 获取数据 (现在是同步获取 List<PopularDish>)
+                            List<PopularDish> popularDishes = userDishDao.getPopularDishes();
+
+                            // 【新增调试代码】: 打印查询结果到 Logcat
+                            if (popularDishes == null || popularDishes.isEmpty()) {
+                                Log.e(TAG, "热度排行查询结果: 列表为空！");
+                                // 订单项的 GID 检查已经不需要了，如果 SQL 语句正确，这里为空说明 dish_table 为空
+                            } else {
+                                Log.d(TAG, "热度排行查询结果: 列表大小=" + popularDishes.size());
+                                for(PopularDish pd : popularDishes) {
+                                    Log.d(TAG, "热度排行菜品: GID=" + pd.GID + ", Name=" + pd.name + ", Sales=" + pd.totalSales);
+                                }
+                            }
+                            // 【结束调试代码】
+
+                            // 2. 将 List<PopularDish> 转换为 List<Dish> 供 FoodStickyAdapter 使用
+                            ArrayList<Dish> dishesToShow = new ArrayList<>();
+                            if (popularDishes != null) {
+                                for (PopularDish pd : popularDishes) {
+                                    // 实例化 Dish 并赋值
+                                    Dish dish = new Dish(pd.GID, pd.name, pd.description, pd.price, pd.category, pd.CID, pd.spicy, pd.sweet);
+                                    // 假设 Dish 中有 setTotalSales 方法，并调用它来存储销量
+                                    dish.setTotalSales(pd.totalSales);
+                                    dishesToShow.add(dish);
+                                }
+                            }
+
+                            // 3. 回到主线程更新 UI
+                            requireActivity().runOnUiThread(() -> {
+                                showSpecialList(dishesToShow, false);
+                                Toast.makeText(getContext(), "已显示热度排行列表", Toast.LENGTH_SHORT).show();
+                            });
+                        }).start();
+                    }
+                }
+
+                // 2. 处理普通分类点击 (CID > 0)
+                else {
+                    // 【核心修正】：如果当前 Adapter 不是完整的 FoodStickyAdapter，先恢复它！
+                    // 只有当 stickyListView 的 Adapter 不是 foodStickyAdapter 时才需要恢复
+                    if (stickyListView.getAdapter() != foodStickyAdapter) {
+                        stickyListView.setAdapter(foodStickyAdapter); // 恢复为完整的菜单 Adapter
+                        // 恢复左侧分类栏的可见性（如果你在特殊模式下隐藏了）
+                        listView.setVisibility(View.VISIBLE);
+                    }
+
+                    // 【原有逻辑】：执行跳转
+                    int selectedPosition = foodStickyAdapter.getPositionByCID(selectedCID);
+
+                    // 确保跳转位置不越界
+                    if (selectedPosition >= 0 && selectedPosition < foodStickyAdapter.getCount()) {
+                        stickyListView.setSelection(selectedPosition);
+                        Log.d(TAG, "onItemClick: click and set selection");
+                    } else {
+                        // 找不到分类起始位置，可能分类里没有菜
+                        Toast.makeText(getContext(), "该分类暂无菜品", Toast.LENGTH_SHORT).show();
+                    }
+                }
+            }
+        });
+
     }
 
+    /**
+     * 显示特殊列表 (推荐/热度排行)
+     *
+     * @param specialDishList 要显示的 Dish 列表
+     * @param hideCategoryList 是否隐藏左侧分类列表
+     */
+    private void showSpecialList(List<Dish> specialDishList, boolean hideCategoryList) {
+        // 1. 创建新的 Adapter (使用特殊列表)
+        FoodStickyAdapter specialAdapter = new FoodStickyAdapter(getContext(), this, (ArrayList<Dish>) specialDishList, userDishList, user.username);
+        stickyListView.setAdapter(specialAdapter);
+
+        // 2. 隐藏或显示左侧分类栏
+        listView.setVisibility(hideCategoryList ? View.GONE : View.VISIBLE);
+
+        // 3. 确保左侧分类栏的高亮状态正确 (可选)
+        // foodCategoryAdapter.updateCategorySelectionByCID(CID_RECOMMEND/CID_POPULAR);
+    }
     /**
      * 更新购物车已购金额、
      *
@@ -420,9 +537,53 @@ public class DishMenuFragment extends Fragment {
         payment = view.findViewById(R.id.shopping_commit);
         shoppingCar = view.findViewById(R.id.shopping_car);
         searchEditText = view.findViewById(R.id.edittext_search); // 【修改】绑定新 ID 的搜索框
+        btnShowFavorites = view.findViewById(R.id.btn_show_favorites); // 假设你添加了这个按钮
+
+        // 【新增】: 收藏夹按钮点击事件
+        btnShowFavorites.setOnClickListener(v -> showFavoriteList());
         redPackInit();
     }
+    // 【新增方法】: 显示收藏列表
+    private void showFavoriteList() {
+        // 切换状态
+        isShowingFavorites = !isShowingFavorites;
 
+        if (isShowingFavorites) {
+            // ========== 模式：显示收藏夹 ==========
+            new Thread(() -> {
+                // 1. 获取收藏的菜品列表
+                List<Dish> favoriteDishes = favoriteDao.getFavoriteDishes(user.username);
+
+                requireActivity().runOnUiThread(() -> {
+                    // 2. 用收藏列表更新 Adapter
+                    FoodStickyAdapter adapter = new FoodStickyAdapter(getContext(), this, (ArrayList<Dish>) favoriteDishes, userDishList, user.username);
+                    stickyListView.setAdapter(adapter);
+
+                    // 3. 隐藏左侧分类栏
+                    listView.setVisibility(View.GONE);
+
+                    Toast.makeText(getContext(), "已显示收藏夹列表", Toast.LENGTH_SHORT).show();
+                });
+            }).start();
+
+        } else {
+            // ========== 模式：退出收藏夹，恢复完整菜单 ==========
+            // 1. 恢复 dishList
+            initDishList(); // 重新从数据库加载完整菜品列表 (确保 dishList 是完整的)
+
+            // 2. 恢复 Adapter
+            FoodStickyAdapter adapter = new FoodStickyAdapter(getContext(), this, dishList, userDishList, user.username);
+            stickyListView.setAdapter(adapter);
+
+            // 3. 恢复左侧分类栏
+            listView.setVisibility(View.VISIBLE);
+            // 重新设置分类栏 Adapter
+            FoodCategoryAdapter foodCategoryAdapter = new FoodCategoryAdapter(getContext(), categoryItems);
+            listView.setAdapter(foodCategoryAdapter);
+
+            Toast.makeText(getContext(), "已恢复完整菜单", Toast.LENGTH_SHORT).show();
+        }
+    }
     /**
      * 初始化红包
      *
@@ -567,7 +728,15 @@ public class DishMenuFragment extends Fragment {
         //获取数据库中的菜品
         dishList = (ArrayList<Dish>) dishDao.getAllDish();
 
-        //输出内容
+        // 🔴 关键新增 Log：打印 dish_table 中的菜品总数
+        int dishCount = dishDao.getDishCount();
+        Log.w(TAG, "🔍 dish_table 菜品总数: " + dishCount);
+        // 🔴 关键新增 Log：打印所有菜品列表（包括 GID）
+        for (Dish dish : dishList) {
+            Log.w(TAG, "🔍 Dish in dish_table: GID=" + dish.getGID() + ", Name=" + dish.getName());
+        }
+
+        //输出内容（原有 Log，可以保留）
         for (Dish dish : dishList) {
             Log.d(TAG, "initDishListForTest: " + dish.toString());
         }
@@ -583,6 +752,19 @@ public class DishMenuFragment extends Fragment {
      */
     private void initCategoryItems() {
         categoryItems = null;
+        // 1. 【新增】初始化 categoryItems (确保它不是 null)
+        if (categoryItems == null) {
+            categoryItems = new ArrayList<>();
+        } else {
+            categoryItems.clear(); // 清空，确保每次只初始化一次
+        }
+
+        // 2. 【新增】手动添加新的特殊分类
+        // 推荐分类 (CID = -1)
+        categoryItems.add(new FoodCategoryAdapter.CategoryItem("餐品推荐", CID_RECOMMEND));
+        // 热度排行分类 (CID = -2)
+        categoryItems.add(new FoodCategoryAdapter.CategoryItem("热度排行", CID_POPULAR));
+
         // 遍历菜单列表，如果该菜品所属类别尚未添加到类别列表中，则将此菜品的类别添加。
         dishList.forEach(dish -> {
             // 若类别列表为空，则直接添加

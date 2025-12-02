@@ -2,7 +2,7 @@ package com.example.Android_bigWork.Entity;
 
 import androidx.room.Entity;
 import androidx.room.PrimaryKey;
-
+import androidx.room.Ignore; // 确保导入
 import java.io.Serializable;
 
 /**
@@ -25,6 +25,10 @@ public class Dish implements Serializable {     // 菜品类
     private boolean sweet;  // 甜味是否可选
     private int count;  // 选购份数
 
+    // 【新增字段】: 使用 @Ignore 告诉 Room 这个字段不属于 dish_table 表
+    @Ignore
+    private int totalSales;
+
     public Dish() {
 
     }
@@ -40,7 +44,13 @@ public class Dish implements Serializable {     // 菜品类
         this.sweet = sweet;
         this.count = 0;
     }
+    public int getTotalSales() {
+        return totalSales;
+    }
 
+    public void setTotalSales(int totalSales) {
+        this.totalSales = totalSales;
+    }
     public boolean isSpicy() {
         return spicy;
     }

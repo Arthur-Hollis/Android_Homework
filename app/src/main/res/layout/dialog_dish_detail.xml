@@ -33,6 +33,19 @@
                 android:layout_height="wrap_content"
                 android:layout_alignParentTop="true">
 
+                <!-- 收藏按钮 (ImageButton) -->
+                <ImageButton
+                    android:id="@+id/btn_favorite"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:minWidth="48dp"
+                    android:minHeight="48dp"
+                    android:background="#00000000"
+                    app:layout_constraintBottom_toTopOf="@+id/dish_sub"
+                    app:layout_constraintEnd_toEndOf="parent"
+                    app:layout_constraintStart_toStartOf="@+id/guideline4"
+                    app:srcCompat="@android:drawable/btn_star_big_off" />
+
                 <!-- 菜品图片 -->
                 <ImageView
                     android:id="@+id/dish_img"

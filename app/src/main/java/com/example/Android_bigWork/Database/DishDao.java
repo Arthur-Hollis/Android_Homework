@@ -8,7 +8,7 @@ import androidx.room.Query;
 import androidx.room.Update;
 
 import com.example.Android_bigWork.Entity.Dish;
-
+import com.example.Android_bigWork.Entity.PopularDish;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -25,7 +25,8 @@ public interface DishDao {
      */
     @Query("SELECT * FROM dish_table ORDER BY CID")
     List<Dish> getAllDish();
-
+    @Query("SELECT * FROM dish_table WHERE GID IN (1, 5, 10)") // 【新增】
+    List<Dish> getRecommendedDishes();
     /**
      * 清除所有菜品
      *
@@ -82,5 +83,6 @@ public interface DishDao {
 
     @Query("SELECT COUNT(*) FROM dish_table")
     int getDishCount();
+    // 【新增】: 确保 SQL 语句是正确的单行
 
 }
